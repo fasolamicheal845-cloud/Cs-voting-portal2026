@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Computer Science Voting Portal</title>
+
+<!-- Chart.js CDN -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+body{
+    margin:0;
+    font-family:Arial, sans-serif;
+    background:#0f172a;
+    color:white;
+}
+.box{
+    width:90%;
+    max-width:450px;
+    margin:40px auto;
+    background:#111827;
+    padding:25px;
+    border-radius:15px;
+    box-shadow:0 0 30px rgba(0,0,0,.6);
+    text-align:center;
+}
+input, button{
+    width:100%;
+    padding:12px;
+    margin:10px 0;
+    border:none;
+    border-radius:8px;
+}
+button{
+    background:#00c6ff;
+    font-weight:bold;
+    cursor:pointer;
+}
+label{
+    display:block;
+    margin:10px 0;
+}
+.error{
+    color:#ff6b6b;
+}
+.hidden{
+    display:none;
+}
+#timer{
+    margin:10px 0;
+    color:#38bdf8;
+    font-weight:bold;
+}
+canvas{
+    margin-top:20px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="box">
+
+<h2>Computer Science Class Rep Voting</h2>
+<p>ND CS (F24 Set)</p>
+
+<!-- ADMIN LOGIN -->
+<div id="adminLogin">
+    <input type="password" id="adminPass" placeholder="Admin code">
+    <button onclick="adminLogin()">Admin Login</button>
+</div>
+
+<button id="startBtn" class="hidden" onclick="startVoting()">Start Voting</button>
+<div id="timer">Time left: <span id="countdown">Not started</span></div>
+
+<p id="error" class="error"></p>
+<p id="noAccessMsg" class="error hidden">
+  Results are only available to voters.
+</p>
+
+<!-- LOGIN -->
+<div id="login">
+    <input type="text" id="matric" placeholder="CS/ND/F24/4005">
+    <button onclick="login()">Login</button>
+</div>
+
+<!-- OTP -->
+<div id="otpSection" class="hidden">
+    <p><strong>OTP:</strong> <span id="otpDisplay"></span></p>
+    <input type="number" id="otpInput" placeholder="Enter OTP">
+    <button onclick="verifyOTP()">Verify OTP</button>
+</div>
+
+<!-- VOTE -->
+<div id="voteSection" class="hidden">
+    <h3>Cast Your Vote</h3>
+    <label><input type="radio" name="candidate" value="Glorify"> Glorify</label>
+    <label><input type="radio" name="candidate" value="Lifted"> Lifted</label>
+    <label><input type="radio" name="candidate" value="FORTUNE"> FORTUNE</label>
+    <button onclick="submitVote()">Submit Vote</button>
+</div>
+
+<!-- RESULTS -->
+<div id="resultsSection" class="hidden">
+    <h3>Final Results</h3>
+    <p>Glorify: <strong id="gCount">0</strong></p>
+    <p>Lifted: <strong id="lCount">0</strong></p>
+    <p>FORTUNE: <strong id="fCount">0</strong></p>
+
+    <canvas id="resultsChart"></canvas>
+</div>
+
+</div>
+
+<script>
+// ================= CONFIG =================
+const ADMIN_CODE = "CSADMIN2026";
+const VOTING_DURATION = 4 * 60 * 60 * 1000;
+
+let endTime = localStorage.getItem("votingEndTime");
+let votingStarted = localStorage.getItem("votingStarted");
+let isAdmin = false;
+let currentOTP = "";
+let currentMatric = "";
+let chartDrawn = false;
+
+// ================= ADMIN =================
+function adminLogin(){
+    if(document.getElementById("adminPass").value !== ADMIN_CODE){
+        showError("Invalid admin code");
+        return;
+    }
+    isAdmin = true;
+    document.getElementById("adminLogin").classList.add("hidden");
+    document.getElementById("startBtn").classList.remove("hidden");
+    showError("");
+}
+
+function startVoting(){
+    if(!isAdmin) return;
+    if(!endTime){
+        endTime = Date.now() + VOTING_DURATION;
+        localStorage.setItem("votingEndTime", endTime);
+        localStorage.setItem("votingStarted", true);
+        votingStarted = true;
+    }
+    document.getElementById("startBtn").classList.add("hidden");
+    updateCountdown();
+}
+
+// ================= TIMER =================
+function updateCountdown(){
+    if(!endTime){
+        document.getElementById("countdown").textContent = "Not started";
+        return;
+    }
+
+    const diff = endTime - Date.now();
+    if(diff <= 0){
+        document.getElementById("countdown").textContent = "Voting Closed";
+        showResults();
+        return;
+    }
+
+    const h = Math.floor(diff / 3600000);
+    const m = Math.floor((diff % 3600000) / 60000);
+    const s = Math.floor((diff % 60000) / 1000);
+    document.getElementById("countdown").textContent = `${h}h ${m}m ${s}s`;
+}
+setInterval(updateCountdown, 1000);
+updateCountdown();
+
+// ================= LOGIN =================
+function isValidMatric(m){
+    const p = /^CS\/ND\/F24\/\d{4}$/;
+    if(!p.test(m)) return false;
+    const n = parseInt(m.split("/")[3]);
+    return n >= 4005 && n <= 4235;
+}
+
+function login(){
+    if(!votingStarted){
+        showError("Voting has not started yet");
+        return;
+    }
+
+    const m = document.getElementById("matric").value.trim().toUpperCase();
+    if(!isValidMatric(m)){
+        showError("Invalid matric number");
+        return;
+    }
+
+    currentMatric = m;
+    if(localStorage.getItem("voted_"+m)){
+        showResults();
+        return;
+    }
+
+    currentOTP = Math.floor(100000 + Math.random() * 900000);
+    document.getElementById("otpDisplay").textContent = currentOTP;
+    document.getElementById("login").classList.add("hidden");
+    document.getElementById("otpSection").classList.remove("hidden");
+    showError("");
+}
+
+function verifyOTP(){
+    if(document.getElementById("otpInput").value != currentOTP){
+        showError("Wrong OTP");
+        return;
+    }
+    document.getElementById("otpSection").classList.add("hidden");
+    document.getElementById("voteSection").classList.remove("hidden");
+}
+
+// ================= VOTING =================
+function submitVote(){
+    const sel = document.querySelector('input[name="candidate"]:checked');
+    if(!sel){
+        showError("Select a candidate");
+        return;
+    }
+
+    let votes = JSON.parse(localStorage.getItem("votes")) || {
+        Glorify:0, Lifted:0, FORTUNE:0
+    };
+
+    votes[sel.value]++;
+    localStorage.setItem("votes", JSON.stringify(votes));
+    localStorage.setItem("voted_"+currentMatric, true);
+    showResults();
+}
+
+// ================= RESULTS + CHART =================
+function showResults(){
+    if(!endTime || Date.now() < endTime) return;
+
+    if(!currentMatric || !localStorage.getItem("voted_"+currentMatric)){
+        document.getElementById("noAccessMsg").classList.remove("hidden");
+        return;
+    }
+
+    const votes = JSON.parse(localStorage.getItem("votes")) || {
+        Glorify:0, Lifted:0, FORTUNE:0
+    };
+
+    document.getElementById("gCount").textContent = votes.Glorify;
+    document.getElementById("lCount").textContent = votes.Lifted;
+    document.getElementById("fCount").textContent = votes.FORTUNE;
+
+    document.getElementById("login").classList.add("hidden");
+    document.getElementById("voteSection").classList.add("hidden");
+    document.getElementById("resultsSection").classList.remove("hidden");
+
+    if(!chartDrawn){
+        drawChart(votes);
+        chartDrawn = true;
+    }
+}
+
+function drawChart(v){
+    new Chart(document.getElementById("resultsChart"),{
+        type:"bar",
+        data:{
+            labels:["Glorify","Lifted","FORTUNE"],
+            datasets:[{
+                label:"Votes",
+                data:[v.Glorify, v.Lifted, v.FORTUNE]
+            }]
+        }
+    });
+}
+
+// ================= ERROR =================
+function showError(msg){
+    document.getElementById("error").textContent = msg;
+}
+</script>
+
+</body>
+</html>
